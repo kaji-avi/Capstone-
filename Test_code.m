@@ -16,7 +16,6 @@ SNR = 100;
 to = 0;
 h = 1;
 
-
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
 
 % QAM Mapping (Gray Mapping for 16-QAM)
@@ -98,6 +97,9 @@ function timeDomainSymbols = ifft_function(parallelData, Nsubcarriers)
         end
         timeDomainSymbols(:, col) = x / N;
     end
+    % Normalization below ensures that the power of the signal remains 
+    % consistent during the transformation from the frequency domain to the time domain.
+    timeDomainSymbols = timeDomainSymbols * sqrt(Nsubcarriers);
 end
 
 % Function for FFT calculation

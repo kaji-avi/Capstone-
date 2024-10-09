@@ -8,16 +8,18 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
+cyclicPrefixLength = 32;
 
 
 % Roberto' Parameters
-SNR = 30; 
-h = 60;
-to = 4;
+SNR = 100; 
+to = 0;
+h = 1;
 
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
 
 % QAM Mapping (Gray Mapping for 16-QAM)
+numSymbols = numBits / bitsPerSymbol;  % Number of QAM symbols
 qamSymbols = zeros(numSymbols, 1);  % Initialize QAM symbols
 for i = 1:numSymbols
     bits = dataBits((i-1)*bitsPerSymbol + (1:bitsPerSymbol))';  % Extract 4 bits
@@ -33,39 +35,41 @@ timeDomainSymbols = ifft_function(parallelData, N);
 timeDomainSymbolsWithCP = [timeDomainSymbols(end-cyclicPrefixLength+1:end, :); timeDomainSymbols];
 x = timeDomainSymbolsWithCP(:);  % Convert to serial for transmission
 
-    % 5. Pass through the channel (provided function)
-    y = channelEmulation(x, SNR, to, h);
+% Pass through the channel (provided function)
+y = channelEmulation(x, SNR, to, h);
 
-    % 6. Receiver Side: Remove CP, Serial to Parallel, FFT
-    receivedParallelData = reshape(y, N + cyclicPrefixLength, []);  % Serial to parallel conversion
-    receivedSymbolsWithoutCP = receivedParallelData(cyclicPrefixLength+1:end, :);  % Remove CP
-    receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, N);  % FFT
 
-    % 7. Equalization Using Known Channel (h_hat)
-    h_hat = fft(h, N);  % Assuming h is given in time domain, take its FFT
-    signalPower = mean(abs(timeDomainSymbols(:)).^2);  % Signal power
-    noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
-    equalizedSymbols = mmse_equalization(receivedFrequencyDomainSymbols, h_hat, noiseVariance, signalPower);
+%% Receiver
 
-    % 8. QAM Demapping: Convert Equalized Symbols Back to Bits
-    receivedBits = zeros(numBits, 1);
-    for i = 1:numSymbols
-        receivedBits((i-1)*bitsPerSymbol + (1:bitsPerSymbol)) = qam_to_gray(equalizedSymbols(i), M);
-    end
+% Remove CP, Serial to Parallel, FF
+receivedParallelData = reshape(y, N + cyclicPrefixLength, []);  % Serial to parallel conversion
+receivedSymbolsWithoutCP = receivedParallelData(cyclicPrefixLength+1:end, :);  % Remove CP
+receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, N);  % FFT
 
-    % 9. Calculate Bit Error Rate (BER)
-    numErrors = sum(dataBits ~= receivedBits);  % Count bit errors
-    ber = numErrors / numBits;  % Compute BER
-    fprintf('Bit Error Rate (BER): %f\n', ber);
 
-    % Optional: Plot transmitted and received constellations
-    figure;
-    scatterplot(qamSymbols);  % Plot original transmitted symbols
-    title('Transmitted QAM Constellation');
+% Equalization Using Known Channel (h_hat)
+h_hat = fft(h, N);  % Assuming h is given in time domain, take its FFT
+signalPower = mean(abs(timeDomainSymbols(:)).^2);  % Signal power
+noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
+equalizedSymbols = mmse_equalization(receivedFrequencyDomainSymbols, h_hat, noiseVariance, signalPower);
 
-    figure;
-    scatterplot(equalizedSymbols(:));  % Plot received symbols after equalization
-    title('Received Constellation after Equalization');
+% QAM Demapping: Convert Equalized Symbols Back to Bits
+receivedBits = zeros(numBits, 1);
+for i = 1:numSymbols
+    receivedBits((i-1)*bitsPerSymbol + (1:bitsPerSymbol)) = qam_to_gray(equalizedSymbols(i), M);
+end
+
+% Calculate Bit Error Rate (BER)
+numErrors = sum(dataBits ~= receivedBits);  % Count bit errors
+ber = numErrors / numBits;  % Compute BER
+fprintf('Bit Error Rate (BER): %f\n', ber);
+
+% Plot transmitted and received constellations
+scatterplot(qamSymbols);  % Plot original transmitted symbols
+title('Transmitted QAM Constellation');
+
+scatterplot(equalizedSymbols(:));  % Plot received symbols after equalization
+title('Received Constellation after Equalization');
 
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(receivedSymbols, H, noiseVariance, signalPower)
