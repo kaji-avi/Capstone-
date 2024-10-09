@@ -1,3 +1,6 @@
+clc
+clear
+close all
 %% Transmitter
 
 % Set a random seed for reproducibility
@@ -8,13 +11,14 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
-cyclicPrefixLength = 32;
+cyclicPrefixLength = 48;
 
 
 % Roberto' Parameters
 SNR = 100; 
-to = 0;
-h = 1;
+to = 2;
+h = [1, 0.3, 0.2];  % A simple multipath channel with 3 taps.
+
 
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
 
@@ -38,14 +42,12 @@ x = timeDomainSymbolsWithCP(:);  % Convert to serial for transmission
 % Pass through the channel (provided function)
 y = channelEmulation(x, SNR, to, h);
 
-
 %% Receiver
 
 % Remove CP, Serial to Parallel, FF
 receivedParallelData = reshape(y, N + cyclicPrefixLength, []);  % Serial to parallel conversion
 receivedSymbolsWithoutCP = receivedParallelData(cyclicPrefixLength+1:end, :);  % Remove CP
 receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, N);  % FFT
-
 
 % Equalization Using Known Channel (h_hat)
 h_hat = fft(h, N);  % Assuming h is given in time domain, take its FFT
@@ -73,10 +75,8 @@ title('Received Constellation after Equalization');
 
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(receivedSymbols, H, noiseVariance, signalPower)
-    % Compute MMSE filter for each subcarrier
     mmseFilter = conj(H) ./ (abs(H).^2 + noiseVariance / signalPower);
-    
-    % Apply the MMSE filter to the received symbols
+  
     equalizedSymbols = mmseFilter .* receivedSymbols;
 end
 
@@ -98,6 +98,9 @@ function timeDomainSymbols = ifft_function(parallelData, Nsubcarriers)
         end
         timeDomainSymbols(:, col) = x / N;
     end
+    % Normalization below ensures that the power of the signal remains 
+    % consistent during the transformation from the frequency domain to the time domain.
+    timeDomainSymbols = timeDomainSymbols * sqrt(Nsubcarriers);
 end
 
 % Function for FFT calculation
@@ -149,3 +152,4 @@ function bits = qam_to_gray(qamSymbol, M)
         error('Demapping not implemented for this value of M');
     end
 end
+

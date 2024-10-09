@@ -1,3 +1,6 @@
+clc
+clear
+close all
 %% Transmitter
 
 % Set a random seed for reproducibility
@@ -8,13 +11,14 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
-cyclicPrefixLength = 32;
+cyclicPrefixLength = 48;
 
 
 % Roberto' Parameters
 SNR = 100; 
 to = 0;
 h = 1;
+
 
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
 
@@ -37,7 +41,6 @@ x = timeDomainSymbolsWithCP(:);  % Convert to serial for transmission
 
 % Pass through the channel (provided function)
 y = channelEmulation(x, SNR, to, h);
-
 
 %% Receiver
 
@@ -72,10 +75,8 @@ title('Received Constellation after Equalization');
 
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(receivedSymbols, H, noiseVariance, signalPower)
-    % Compute MMSE filter for each subcarrier
     mmseFilter = conj(H) ./ (abs(H).^2 + noiseVariance / signalPower);
-    
-    % Apply the MMSE filter to the received symbols
+  
     equalizedSymbols = mmseFilter .* receivedSymbols;
 end
 
@@ -151,3 +152,4 @@ function bits = qam_to_gray(qamSymbol, M)
         error('Demapping not implemented for this value of M');
     end
 end
+
