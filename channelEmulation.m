@@ -1,4 +1,4 @@
-function y = channelEmulation(x,snr,to,h)
+function y = channelEmulation(x,snr,to,h) 
 
 y = zeros(1,to); % create some offset
 y = [y conv(h,x)];
