@@ -11,11 +11,11 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
-cyclicPrefixLength = 48;
+cyclicPrefixLength = N * 0.25;
 
 
-% Roberto' Parameters
-SNR = 100; 
+% % Roberto' Parameters
+SNR = 40; 
 to = 0;
 h = 1;
 
@@ -33,24 +33,27 @@ end
 
 % OFDM Modulation (TX): Serial to Parallel, IFFT
 parallelData = reshape(qamSymbols, N, []);  % Reshape to N subcarriers x symbols
-timeDomainSymbols = ifft_function(parallelData, N);     
+timeDomainSymbols = ifft_function(parallelData, N);
+timeDomainSymbols = timeDomainSymbols* sqrt(N);
 
 % Add Cyclic Prefix (CP)
 timeDomainSymbolsWithCP = [timeDomainSymbols(end-cyclicPrefixLength+1:end, :); timeDomainSymbols];
 x = timeDomainSymbolsWithCP(:);  % Convert to serial for transmission
 
+
 % Pass through the channel (provided function)
-y = channelEmulation(x, SNR, to, h);
+c = channelEmulation(x, SNR, to, h);
 
 %% Receiver
 
 % Remove CP, Serial to Parallel, FF
-receivedParallelData = reshape(y, N + cyclicPrefixLength, []);  % Serial to parallel conversion
+receivedParallelData = reshape(c, N + cyclicPrefixLength, []);  % Serial to parallel conversion
 receivedSymbolsWithoutCP = receivedParallelData(cyclicPrefixLength+1:end, :);  % Remove CP
 receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, N);  % FFT
+receivedFrequencyDomainSymbols= receivedFrequencyDomainSymbols/ sqrt(N); % normalization
 
 % Equalization Using Known Channel (h_hat)
-h_hat = fft(h, N);  % Assuming h is given in time domain, take its FFT
+h_hat = fft(h, N) / sqrt(N);  % Take FFT with normalization
 signalPower = mean(abs(timeDomainSymbols(:)).^2);  % Signal power
 noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
 equalizedSymbols = mmse_equalization(receivedFrequencyDomainSymbols, h_hat, noiseVariance, signalPower);
@@ -73,12 +76,49 @@ title('Transmitted QAM Constellation');
 scatterplot(equalizedSymbols(:));  % Plot received symbols after equalization
 title('Received Constellation after Equalization');
 
+% Debugging
+% After OFDM Modulation
+txPowerBeforeCP = mean(abs(timeDomainSymbols(:)).^2);
+fprintf('Power before CP: %f\n', txPowerBeforeCP);
+
+% After Adding CP
+txPowerAfterCP = mean(abs(timeDomainSymbolsWithCP(:)).^2);
+fprintf('Power after CP: %f\n', txPowerAfterCP);
+
+% Received Signal Power (Before Equalization)
+rxPowerBeforeEQ = mean(abs(receivedFrequencyDomainSymbols(:)).^2);
+fprintf('Received Power before EQ: %f\n', rxPowerBeforeEQ);
+
+% Received Signal Power (After Equalization)
+rxPowerAfterEQ = mean(abs(equalizedSymbols(:)).^2);
+fprintf('Received Power after EQ: %f\n', rxPowerAfterEQ);
+
+
+
+
+function c = channelEmulation(x,SNR,to,h)
+
+% c = zeros(1,to); % create some offset
+% c = [c conv(h,x)];
+% 
+% % scale with SNR and multiply CFO
+% c = sqrt(snr).*c;
+% 
+% % add awgn
+% c = c+sqrt(1/2).*(randn(size(c))+1i.*randn(size(c)));
+
+noiseVariance = 1 / (10^(SNR / 10));
+c = conv(h, x) + sqrt(noiseVariance / 2) * (randn(size(x)) + 1i * randn(size(x)));
+
+end
+
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(receivedSymbols, H, noiseVariance, signalPower)
     mmseFilter = conj(H) ./ (abs(H).^2 + noiseVariance / signalPower);
-  
-    equalizedSymbols = mmseFilter .* receivedSymbols;
+    equalizedSymbols = receivedSymbols .* mmseFilter;
+    equalizedSymbols = equalizedSymbols / sqrt(mean(abs(mmseFilter).^2));
 end
+
 
 % Function for IFFT calculation
 function timeDomainSymbols = ifft_function(parallelData, Nsubcarriers)
@@ -121,36 +161,31 @@ function receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP,
         end
         receivedFrequencyDomainSymbols(:, col) = X;
     end
-    
 end
 
-% Function for Gray to QAM mapping
+% Function for Gray to QAM Mapping (16-QAM)
 function qamSymbol = gray_to_qam(grayIndex, M)
     if M == 16
-        realMap = [-3 -1 3 1];
-        imagMap = [-3 -1 3 1];
-        realIdx = mod(grayIndex, 4) + 1;
-        imagIdx = floor(grayIndex / 4) + 1;
-        realPart = realMap(realIdx);
-        imagPart = imagMap(imagIdx);
-        qamSymbol = (realPart + 1i * imagPart) / sqrt(10);
+        % Predefined QAM constellation points for 16-QAM
+        constellation = [-3 -1 3 1] / sqrt(10);
+        realPart = constellation(mod(grayIndex, 4) + 1);
+        imagPart = constellation(floor(grayIndex / 4) + 1);
+        qamSymbol = realPart + 1i * imagPart;
     else
         error('Mapping not implemented for this value of M');
     end
 end
 
-% Function for QAM to Gray demapping
+% Function for QAM to Gray Demapping (16-QAM)
 function bits = qam_to_gray(qamSymbol, M)
     if M == 16
-        qamSymbol = qamSymbol * sqrt(10);
-        realMap = [-3 -1 1 3];
-        imagMap = [-3 -1 1 3];
-        [~, realIdx] = min(abs(real(qamSymbol) - realMap));
-        [~, imagIdx] = min(abs(imag(qamSymbol) - imagMap));
+        qamSymbol = qamSymbol * sqrt(10);  % Rescale for comparison
+        constellation = [-3 -1 1 3];  % Original constellation points
+        [~, realIdx] = min(abs(real(qamSymbol) - constellation));
+        [~, imagIdx] = min(abs(imag(qamSymbol) - constellation));
         grayIndex = (imagIdx - 1) * 4 + (realIdx - 1);
         bits = de2bi(grayIndex, log2(M), 'left-msb')';
     else
         error('Demapping not implemented for this value of M');
     end
 end
-
