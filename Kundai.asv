@@ -3,7 +3,7 @@ clear
 close all
 %% Transmitter
 
-% Set a random seed for reproducibility
+% Random seed for reproducibility
 rng(42); 
 
 % Parameters
@@ -11,20 +11,21 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
-cyclicPrefixLength = N * 0.25;
+CP = N * 0.25;
 
 
 % % Roberto' Parameters
-SNR = 40; 
+SNR = 100; 
 to = 0;
 h = 1;
 
-
+% Input data
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
 
 % QAM Mapping (Gray Mapping for 16-QAM)
 numSymbols = numBits / bitsPerSymbol;  % Number of QAM symbols
 qamSymbols = zeros(numSymbols, 1);  % Initialize QAM symbols
+
 for i = 1:numSymbols
     bits = dataBits((i-1)*bitsPerSymbol + (1:bitsPerSymbol))';  % Extract 4 bits
     grayIndex = bi2de(bits, 'left-msb');  
@@ -32,31 +33,39 @@ for i = 1:numSymbols
 end
 
 % OFDM Modulation (TX): Serial to Parallel, IFFT
-parallelData = reshape(qamSymbols, N, []);  % Reshape to N subcarriers x symbols
-timeDomainSymbols = ifft_function(parallelData, N);
-timeDomainSymbols = timeDomainSymbols* sqrt(N);
+Data_tx = reshape(qamSymbols, N, []);  % Reshape to N subcarriers x symbols
+Data_tx = ifft_function(Data_tx, N);
+Data_tx = Data_tx* sqrt(N); % Normalizing the data
+
+fprintf('Power before CP: %f\n', mean(abs(Data_tx(:)).^2));
 
 % Add Cyclic Prefix (CP)
-timeDomainSymbolsWithCP = [timeDomainSymbols(end-cyclicPrefixLength+1:end, :); timeDomainSymbols];
-x = timeDomainSymbolsWithCP(:);  % Convert to serial for transmission
+Data_tx = [Data_tx(end-CP+1:end, :); Data_tx];
+fprintf('Power after CP: %f\n', mean(abs(Data_tx(:)).^2));
 
+Data_tx = Data_tx(:);  % Convert to serial for transmission
 
 % Pass through the channel (provided function)
-c = channelEmulation(x, SNR, to, h);
+c = channelEmulation(Data_tx, SNR, to, h);
+%y = channelEmulation(Data_tx, SNR, to, h);
 
 %% Receiver
 
-% Remove CP, Serial to Parallel, FF
-receivedParallelData = reshape(c, N + cyclicPrefixLength, []);  % Serial to parallel conversion
-receivedSymbolsWithoutCP = receivedParallelData(cyclicPrefixLength+1:end, :);  % Remove CP
-receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, N);  % FFT
-receivedFrequencyDomainSymbols= receivedFrequencyDomainSymbols/ sqrt(N); % normalization
+Data_rx = reshape(c, N + CP, []);  % Serial to parallel conversion
+Data_rx = Data_rx(CP+1:end, :);  % Remove CP
+fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
+
+Data_rx = fft_function(Data_rx, N);  % FFT
+Data_rx= Data_rx/ sqrt(N); % normalization
+fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
 % Equalization Using Known Channel (h_hat)
-h_hat = fft(h, N) / sqrt(N);  % Take FFT with normalization
-signalPower = mean(abs(timeDomainSymbols(:)).^2);  % Signal power
+h_hat = fft_function(h, N) / sqrt(N);  % Take FFT with normalization
+signalPower = mean(abs(Data_tx(:)).^2);  % Signal power
 noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
-equalizedSymbols = mmse_equalization(receivedFrequencyDomainSymbols, h_hat, noiseVariance, signalPower);
+equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
+fprintf('Received Power after EQ: %f\n', mean(abs(Data_rx(:)).^2));
+
 
 % QAM Demapping: Convert Equalized Symbols Back to Bits
 receivedBits = zeros(numBits, 1);
@@ -69,31 +78,13 @@ numErrors = sum(dataBits ~= receivedBits);  % Count bit errors
 ber = numErrors / numBits;  % Compute BER
 fprintf('Bit Error Rate (BER): %f\n', ber);
 
-% Plot transmitted and received constellations
-scatterplot(qamSymbols);  % Plot original transmitted symbols
+
+% Constellation Plots
+scatterplot(qamSymbols);  % Original transmitted symbols
 title('Transmitted QAM Constellation');
 
-scatterplot(equalizedSymbols(:));  % Plot received symbols after equalization
+scatterplot(equalizedSymbols(:));  % Received symbols after equalization
 title('Received Constellation after Equalization');
-
-% Debugging
-% After OFDM Modulation
-txPowerBeforeCP = mean(abs(timeDomainSymbols(:)).^2);
-fprintf('Power before CP: %f\n', txPowerBeforeCP);
-
-% After Adding CP
-txPowerAfterCP = mean(abs(timeDomainSymbolsWithCP(:)).^2);
-fprintf('Power after CP: %f\n', txPowerAfterCP);
-
-% Received Signal Power (Before Equalization)
-rxPowerBeforeEQ = mean(abs(receivedFrequencyDomainSymbols(:)).^2);
-fprintf('Received Power before EQ: %f\n', rxPowerBeforeEQ);
-
-% Received Signal Power (After Equalization)
-rxPowerAfterEQ = mean(abs(equalizedSymbols(:)).^2);
-fprintf('Received Power after EQ: %f\n', rxPowerAfterEQ);
-
-
 
 
 function c = channelEmulation(x,SNR,to,h)
@@ -113,22 +104,20 @@ c = conv(h, x) + sqrt(noiseVariance / 2) * (randn(size(x)) + 1i * randn(size(x))
 end
 
 % Function for MMSE equalization
-function equalizedSymbols = mmse_equalization(receivedSymbols, H, noiseVariance, signalPower)
+function equalizedSymbols = mmse_equalization(Data_rx, H, noiseVariance, signalPower)
     mmseFilter = conj(H) ./ (abs(H).^2 + noiseVariance / signalPower);
-    equalizedSymbols = receivedSymbols .* mmseFilter;
-    equalizedSymbols = equalizedSymbols / sqrt(mean(abs(mmseFilter).^2));
+    equalizedSymbols = Data_rx .* mmseFilter;
+    equalizedSymbols = equalizedSymbols / sqrt(mean(abs(mmseFilter).^2)); % normalizzation
 end
 
 
 % Function for IFFT calculation
-function timeDomainSymbols = ifft_function(parallelData, Nsubcarriers)
-    [Nrows, Ncols] = size(parallelData);
-    if Nrows ~= Nsubcarriers
-        error('Number of rows in parallelData must match Nsubcarriers');
-    end
-    timeDomainSymbols = zeros(Nsubcarriers, Ncols);
+function timeDomainSymbols = ifft_function(Data_tx, N_sub)
+    [Nrows, Ncols] = size(Data_tx);
+
+    timeDomainSymbols = zeros(N_sub, Ncols);
     for col = 1:Ncols
-        X = parallelData(:, col);
+        X = Data_tx(:, col);
         N = length(X);
         x = zeros(N, 1);
         for n = 0:N-1
@@ -138,20 +127,16 @@ function timeDomainSymbols = ifft_function(parallelData, Nsubcarriers)
         end
         timeDomainSymbols(:, col) = x / N;
     end
-    % Normalization below ensures that the power of the signal remains 
-    % consistent during the transformation from the frequency domain to the time domain.
-    timeDomainSymbols = timeDomainSymbols * sqrt(Nsubcarriers);
+
 end
 
 % Function for FFT calculation
-function receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP, Nsubcarriers)
-    [Nrows, Ncols] = size(receivedSymbolsWithoutCP);
-    if Nrows ~= Nsubcarriers
-        error('Number of rows in receivedSymbolsWithoutCP must match Nsubcarriers');
-    end
-    receivedFrequencyDomainSymbols = zeros(Nsubcarriers, Ncols);
+function frequencyDomainSymbols = fft_function(Data_rx, N_sub)
+    [Nrows, Ncols] = size(Data_rx);
+
+  frequencyDomainSymbols = zeros(N_sub, Ncols);
     for col = 1:Ncols
-        x = receivedSymbolsWithoutCP(:, col);
+        x = Data_rx(:, col);
         N = length(x);
         X = zeros(N, 1);
         for k = 0:N-1
@@ -159,7 +144,7 @@ function receivedFrequencyDomainSymbols = fft_function(receivedSymbolsWithoutCP,
                 X(k+1) = X(k+1) + x(n+1) * exp(-1i * 2 * pi * k * n / N);
             end
         end
-        receivedFrequencyDomainSymbols(:, col) = X;
+        frequencyDomainSymbols(:, col) = X;
     end
 end
 
@@ -167,7 +152,7 @@ end
 function qamSymbol = gray_to_qam(grayIndex, M)
     if M == 16
         % Predefined QAM constellation points for 16-QAM
-        constellation = [-3 -1 3 1] / sqrt(10);
+        constellation = [-3 -1 3 1];
         realPart = constellation(mod(grayIndex, 4) + 1);
         imagPart = constellation(floor(grayIndex / 4) + 1);
         qamSymbol = realPart + 1i * imagPart;
@@ -179,7 +164,6 @@ end
 % Function for QAM to Gray Demapping (16-QAM)
 function bits = qam_to_gray(qamSymbol, M)
     if M == 16
-        qamSymbol = qamSymbol * sqrt(10);  % Rescale for comparison
         constellation = [-3 -1 1 3];  % Original constellation points
         [~, realIdx] = min(abs(real(qamSymbol) - constellation));
         [~, imagIdx] = min(abs(imag(qamSymbol) - constellation));
