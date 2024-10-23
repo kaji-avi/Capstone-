@@ -127,8 +127,8 @@ end
 % Function for Gray to QAM mapping
 function qamSymbol = gray_to_qam(grayIndex, M)
     if M == 16
-        realMap = [-3 -1 3 1];
-        imagMap = [-3 -1 3 1];
+        realMap = [-3 -1 1 3];
+        imagMap = [-3 -1 1 3];
         realIdx = mod(grayIndex, 4) + 1;
         imagIdx = floor(grayIndex / 4) + 1;
         realPart = realMap(realIdx);

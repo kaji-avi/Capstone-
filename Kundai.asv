@@ -15,7 +15,7 @@ CP = N * 0.25;
 
 
 % % Roberto' Parameters
-SNR = 100; 
+SNR = 40; 
 to = 0;
 h = 1;
 
@@ -148,14 +148,14 @@ function frequencyDomainSymbols = fft_function(Data_rx, N_sub)
     end
 end
 
-% Function for Gray to QAM Mapping (16-QAM)
+%Function for Gray to QAM Mapping (16-QAM)
 function qamSymbol = gray_to_qam(grayIndex, M)
     if M == 16
         % Predefined QAM constellation points for 16-QAM
-        constellation = [-3 -1 3 1];
+        constellation = [-3 -1 1 3];
         realPart = constellation(mod(grayIndex, 4) + 1);
         imagPart = constellation(floor(grayIndex / 4) + 1);
-        qamSymbol = realPart + 1i * imagPart;
+        qamSymbol = (realPart + 1i * imagPart) / sqrt;
     else
         error('Mapping not implemented for this value of M');
     end
@@ -172,4 +172,9 @@ function bits = qam_to_gray(qamSymbol, M)
     else
         error('Demapping not implemented for this value of M');
     end
+end
+for i = 1:10  % Inspect the first 10 symbols
+    disp(['Symbol ', num2str(i)]);
+    disp(['Transmitted Bits: ', num2str(dataBits((i-1)*4 + (1:4))')]);
+    disp(['Received Bits:   ', num2str(qam_to_gray(equalizedSymbols(i), M)')]);
 end

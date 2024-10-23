@@ -15,7 +15,7 @@ CP = N * 0.25;
 
 
 % % Roberto' Parameters
-SNR = 20; 
+SNR = 40; 
 to = 0;
 h = 1;
 
@@ -155,7 +155,7 @@ function qamSymbol = gray_to_qam(grayIndex, M)
         constellation = [-3 -1 1 3];
         realPart = constellation(mod(grayIndex, 4) + 1);
         imagPart = constellation(floor(grayIndex / 4) + 1);
-        qamSymbol = realPart + 1i * imagPart;
+        qamSymbol = (realPart + 1i * imagPart) / sqrt(10);
     else
         error('Mapping not implemented for this value of M');
     end
@@ -165,8 +165,8 @@ end
 function bits = qam_to_gray(qamSymbol, M)
     if M == 16
         constellation = [-3 -1 1 3];  % Original constellation points
-        [~, realIdx] = min(abs(real(qamSymbol) - constellation));
-        [~, imagIdx] = min(abs(imag(qamSymbol) - constellation));
+        [~, realIdx] = min(abs(real(qamSymbol*sqrt(10)) - constellation));
+        [~, imagIdx] = min(abs(imag(qamSymbol*sqrt(10)) - constellation));
         grayIndex = (imagIdx - 1) * 4 + (realIdx - 1);
         bits = de2bi(grayIndex, log2(M), 'left-msb')';
     else
