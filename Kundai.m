@@ -88,16 +88,6 @@ title('Received Constellation after Equalization');
 
 
 function c = channelEmulation(x,SNR,to,h)
-
-% c = zeros(1,to); % create some offset
-% c = [c conv(h,x)];
-% 
-% % scale with SNR and multiply CFO
-% c = sqrt(snr).*c;
-% 
-% % add awgn
-% c = c+sqrt(1/2).*(randn(size(c))+1i.*randn(size(c)));
-
 noiseVariance = 1 / (10^(SNR / 10));
 c = conv(h, x) + sqrt(noiseVariance / 2) * (randn(size(x)) + 1i * randn(size(x)));
 
@@ -152,10 +142,10 @@ end
 function qamSymbol = gray_to_qam(grayIndex, M)
     if M == 16
         % Predefined QAM constellation points for 16-QAM
-        constellation = [-3 -1 1 3];
+        constellation = [-3 -1 1 3]/ sqrt(10);
         realPart = constellation(mod(grayIndex, 4) + 1);
         imagPart = constellation(floor(grayIndex / 4) + 1);
-        qamSymbol = (realPart + 1i * imagPart) / sqrt(10);
+        qamSymbol = (realPart + 1i * imagPart) ;
     else
         error('Mapping not implemented for this value of M');
     end
