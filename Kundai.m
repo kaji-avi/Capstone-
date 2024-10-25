@@ -14,10 +14,11 @@ bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
 CP = N * 0.25;
 
 
-% % Roberto' Parameters
+% Roberto' Parameters
 SNR = 40; 
 to = 0;
-h = 1;
+%h = [1 0.2 0.1 0.05];
+h = [1];
 
 % Input data
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
@@ -46,12 +47,14 @@ fprintf('Power after CP: %f\n', mean(abs(Data_tx(:)).^2));
 Data_tx = Data_tx(:);  % Convert to serial for transmission
 
 % Pass through the channel (provided function)
-c = channelEmulation(Data_tx, SNR, to, h);
-%y = channelEmulation(Data_tx, SNR, to, h);
+% y = channelEmulationKundai(Data_tx, SNR, to, h);
+y = channelEmulation(Data_tx, 10.^(SNR/10), to, h);
+y = y.*sqrt(10.^(-SNR/10));
 
 %% Receiver
 
-Data_rx = reshape(c, N + CP, []);  % Serial to parallel conversion
+% when removing the CP, or adding the cp, (CP: CP+NFFT)
+Data_rx = reshape(y, N + CP, []);  % Serial to parallel conversion
 Data_rx = Data_rx(CP+1:end, :);  % Remove CP
 fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
@@ -87,11 +90,12 @@ scatterplot(equalizedSymbols(:));  % Received symbols after equalization
 title('Received Constellation after Equalization');
 
 
-function c = channelEmulation(x,SNR,to,h)
+function c = channelEmulationKundai(x,SNR,to,h)
 noiseVariance = 1 / (10^(SNR / 10));
 c = conv(h, x) + sqrt(noiseVariance / 2) * (randn(size(x)) + 1i * randn(size(x)));
 
 end
+
 
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(Data_rx, H, noiseVariance, signalPower)
