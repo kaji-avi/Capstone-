@@ -11,7 +11,7 @@ N = 64;  % Number of OFDM subcarriers
 M = 16;  % 16-QAM
 numBits = N * log2(M);  % Total number of bits
 bitsPerSymbol = log2(M);  % Bits per symbol (4 bits for 16-QAM)
-CP = N * 0.5;
+CP = N * 0.50;
 
 
 % Roberto' Parameters
@@ -19,8 +19,6 @@ SNR = 40;
 to = 0;
 h = [1 0.2 0.1 0.05];
 %h = [1];
-
-
 
 % Input data
 dataBits = randi([0, 1], numBits, 1);  % Random bit stream
@@ -55,24 +53,24 @@ y = y.*sqrt(10.^(-SNR/10));
 
 %% Receiver
 
-% when removing the CP, or adding the cp, (CP: CP+NFFT)
 extraSamples = length(h) - 1;
 Data_rx = reshape(y, N + extraSamples + CP , []);  % Serial to parallel conversion
 Data_rx = Data_rx(CP+1: CP + N, :); % Remove CP
 
 fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
-Data_rx = fft_function(Data_rx, N);  % FFT
-Data_rx= Data_rx/ sqrt(N); % normalization
+Data_rx = (fft_function(Data_rx, N))/ sqrt(N); % FFT
+
 fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
 % Equalization Using Known Channel (h_hat)
 h_hat = fft_function(h, N) / sqrt(N); % Take FFT with normalization
 signalPower = mean(abs(Data_tx(:)).^2);  % Signal power
 noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
-equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
-fprintf('Received Power after EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
+equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
+equalizedSymbols = equalizedSymbols / sqrt(mean(abs(equalizedSymbols).^2)); % normalization
+fprintf('Received Power after EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
 % QAM Demapping: Convert Equalized Symbols Back to Bits
 receivedBits = zeros(numBits, 1);
@@ -85,25 +83,17 @@ numErrors = sum(dataBits ~= receivedBits);  % Count bit errors
 ber = numErrors / numBits;  % Compute BER
 fprintf('Bit Error Rate (BER): %f\n', ber);
 
-
 % Constellation Plots
 scatterplot(qamSymbols);  % Original transmitted symbols
 title('Transmitted QAM Constellation');
-
-scatterplot(Data_rx(:));  % Plot before equalization
-title('Received Constellation Before Equalization');
-
 scatterplot(equalizedSymbols(:));  % Received symbols after equalization
 title('Received Constellation after Equalization');
-
 
 % Function for MMSE equalization
 function equalizedSymbols = mmse_equalization(Data_rx, H, noiseVariance, signalPower)
     mmseFilter = conj(H) ./ (abs(H).^2 + noiseVariance / signalPower);
     equalizedSymbols = Data_rx .* mmseFilter;
-    equalizedSymbols = equalizedSymbols / sqrt(mean(abs(mmseFilter).^2)); % normalizzation
 end
-
 
 % Function for IFFT calculation
 function timeDomainSymbols = ifft_function(Data_tx, N_sub)
@@ -121,7 +111,6 @@ function timeDomainSymbols = ifft_function(Data_tx, N_sub)
         end
         timeDomainSymbols(:, col) = x / N;
     end
-
 end
 
 % Function for FFT calculation
@@ -186,7 +175,8 @@ for i = 1:length(SNR_range)
 
     % Equalization
     equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
-
+    equalizedSymbols = equalizedSymbols / sqrt(mean(abs(equalizedSymbols).^2)); % normalization
+    
     % QAM Demapping and BER Calculation
     receivedBits = zeros(numBits, 1);
     for j = 1:numSymbols
