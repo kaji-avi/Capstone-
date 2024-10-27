@@ -4,7 +4,7 @@ close all
 %% Transmitter
 
 % Random seed for reproducibility
-%rng(42); 
+rng(42); 
 
 % Parameters
 N = 64;  % Number of OFDM subcarriers
@@ -15,7 +15,7 @@ CP = N * 0.5;
 
 
 % Roberto' Parameters
-SNR = 40; 
+SNR = 1; 
 to = 0;
 h = [1 0.2 0.1 0.05];
 %h = [1];
@@ -57,18 +57,9 @@ y = y.*sqrt(10.^(-SNR/10));
 
 % when removing the CP, or adding the cp, (CP: CP+NFFT)
 extraSamples = length(h) - 1;
-expectedLength = floor(length(y) / (N + CP)) * (N + CP);
+Data_rx = reshape(y, N + CP + extraSamples, []);  % Serial to parallel conversion
+Data_rx = Data_rx(CP+1 : CP + N, :); % Remove CP
 
-%extraPart = y(expectedLength + 1:end);
-
-% Reshape the main part of y into blocks
-Data_rx = reshape(y(1:expectedLength), N + CP, []);
-
-
-%Data_rx = reshape(y, N + CP, []);  % Serial to parallel conversion
-
-% Data_rx = Data_rx(CP+1:end, :);  % Remove CP
-Data_rx = Data_rx(CP + 1 : CP + N, :);
 fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
 Data_rx = fft_function(Data_rx, N);  % FFT
@@ -78,7 +69,6 @@ fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 % Equalization Using Known Channel (h_hat)
 h_hat = fft_function(h, N) / sqrt(N); % Take FFT with normalization
 signalPower = mean(abs(Data_tx(:)).^2);  % Signal power
-
 noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
 equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
 fprintf('Received Power after EQ: %f\n', mean(abs(Data_rx(:)).^2));
@@ -174,8 +164,40 @@ function bits = qam_to_gray(qamSymbol, M)
         error('Demapping not implemented for this value of M');
     end
 end
-for i = 1:10  % Inspect the first 10 symbols
-    disp(['Symbol ', num2str(i)]);
-    disp(['Transmitted Bits: ', num2str(dataBits((i-1)*4 + (1:4))')]);
-    disp(['Received Bits:   ', num2str(qam_to_gray(equalizedSymbols(i), M)')]);
-end
+
+
+% Visualizing BER vs SNR
+
+SNR_range = 0:5:40; % Range of SNR values
+BER = zeros(length(SNR_range), 1); % Store BER for each SNR
+
+% for i = 1:length(SNR_range)
+%     SNR = SNR_range(i); % Set current SNR
+%     y = channelEmulation(Data_tx, 10^(SNR/10), to, h); % Channel
+%     y = y .* sqrt(10^(-SNR/10)); % Scale by noise power
+% 
+%     % Receiver Processing (reuse your existing receiver code here)
+%     Data_rx = reshape(y(1:expectedLength), N + CP, []);
+%     Data_rx = Data_rx(CP + 1:CP + N, :);
+%     Data_rx = fft_function(Data_rx, N) / sqrt(N);
+% 
+%     % Equalization
+%     equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
+% 
+%     % QAM Demapping and BER Calculation
+%     receivedBits = zeros(numBits, 1);
+%     for j = 1:numSymbols
+%         receivedBits((j-1)*bitsPerSymbol + (1:bitsPerSymbol)) = qam_to_gray(equalizedSymbols(j), M);
+%     end
+%     numErrors = sum(dataBits ~= receivedBits);
+%     BER(i) = numErrors / numBits; % Store BER
+% end
+% 
+% % Plot BER vs. SNR
+% figure;
+% semilogy(SNR_range, BER, 'o-');
+% xlabel('SNR (dB)');
+% ylabel('Bit Error Rate (BER)');
+% title('BER vs. SNR');
+% grid on;
+% 

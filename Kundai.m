@@ -15,7 +15,7 @@ CP = N * 0.5;
 
 
 % Roberto' Parameters
-SNR = 25; 
+SNR = 40; 
 to = 0;
 h = [1 0.2 0.1 0.05];
 %h = [1];
@@ -57,14 +57,8 @@ y = y.*sqrt(10.^(-SNR/10));
 
 % when removing the CP, or adding the cp, (CP: CP+NFFT)
 extraSamples = length(h) - 1;
-expectedLength = floor(length(y) / (N + CP)) * (N + CP);
-
-Data_rx = reshape(y(1:expectedLength), N + CP, []); % Reshape the main part of y into blocks
-Data_rx = Data_rx(CP + 1 : CP + N, :); % Remove CP
-
-
-% Data_rx = reshape(y, N + CP, []);  % Serial to parallel conversion
-% Data_rx = Data_rx(CP+1:end, :);  % Remove CP
+Data_rx = reshape(y, N + extraSamples + CP , []);  % Serial to parallel conversion
+Data_rx = Data_rx(CP+1: CP + N, :); % Remove CP
 
 fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 
@@ -75,7 +69,6 @@ fprintf('Received Power before EQ: %f\n', mean(abs(Data_rx(:)).^2));
 % Equalization Using Known Channel (h_hat)
 h_hat = fft_function(h, N) / sqrt(N); % Take FFT with normalization
 signalPower = mean(abs(Data_tx(:)).^2);  % Signal power
-
 noiseVariance = signalPower / (10^(SNR / 10));  % Noise variance
 equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
 fprintf('Received Power after EQ: %f\n', mean(abs(Data_rx(:)).^2));
@@ -96,6 +89,9 @@ fprintf('Bit Error Rate (BER): %f\n', ber);
 % Constellation Plots
 scatterplot(qamSymbols);  % Original transmitted symbols
 title('Transmitted QAM Constellation');
+
+scatterplot(Data_rx(:));  % Plot before equalization
+title('Received Constellation Before Equalization');
 
 scatterplot(equalizedSymbols(:));  % Received symbols after equalization
 title('Received Constellation after Equalization');
@@ -182,15 +178,15 @@ for i = 1:length(SNR_range)
     SNR = SNR_range(i); % Set current SNR
     y = channelEmulation(Data_tx, 10^(SNR/10), to, h); % Channel
     y = y .* sqrt(10^(-SNR/10)); % Scale by noise power
-    
+
     % Receiver Processing (reuse your existing receiver code here)
-    Data_rx = reshape(y(1:expectedLength), N + CP, []);
+    Data_rx = reshape(y, N + CP + extraSamples, []);
     Data_rx = Data_rx(CP + 1:CP + N, :);
     Data_rx = fft_function(Data_rx, N) / sqrt(N);
 
     % Equalization
     equalizedSymbols = mmse_equalization(Data_rx, h_hat, noiseVariance, signalPower);
-    
+
     % QAM Demapping and BER Calculation
     receivedBits = zeros(numBits, 1);
     for j = 1:numSymbols
